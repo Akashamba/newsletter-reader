@@ -1,12 +1,5 @@
 import { relations } from "drizzle-orm";
-import {
-  boolean,
-  index,
-  pgTable,
-  pgTableCreator,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
 import { createTableWithPrefix } from "./create-table";
 
 export const posts = createTableWithPrefix(
