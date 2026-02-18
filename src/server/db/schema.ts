@@ -2,25 +2,44 @@ import { relations } from "drizzle-orm";
 import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
 import { createTableWithPrefix } from "./create-table";
 
-export const posts = createTableWithPrefix(
-  "post",
+export const article = createTableWithPrefix(
+  "articles",
   (d) => ({
-    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
-    name: d.varchar({ length: 256 }),
-    createdById: d
+    id: d.uuid().primaryKey().defaultRandom(),
+    publisherId: d
+      .uuid()
+      .notNull()
+      .references(() => publisher.id, { onDelete: "cascade" }),
+    userId: d
       .varchar({ length: 255 })
       .notNull()
-      .references(() => user.id),
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: d.varchar({ length: 256 }).notNull(),
+    snippet: d.varchar().notNull(),
+    content: d.varchar().notNull(),
+    internalDate: d.text().notNull(), // int64 format
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => new Date())
       .notNull(),
     updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
   }),
-  (t) => [
-    index("created_by_idx").on(t.createdById),
-    index("name_idx").on(t.name),
-  ],
+  (t) => [index("title_idx").on(t.title), index("content_idx").on(t.content)],
+);
+
+export const publisher = createTableWithPrefix(
+  "publisher",
+  (d) => ({
+    id: d.uuid().primaryKey().defaultRandom(),
+    name: d.varchar({ length: 256 }),
+    emailAddress: d.varchar(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  }),
+  (t) => [index("name_idx").on(t.name)],
 );
 
 export const user = createTableWithPrefix("user", {
@@ -86,6 +105,7 @@ export const verification = createTableWithPrefix("verification", {
 export const userRelations = relations(user, ({ many }) => ({
   account: many(account),
   session: many(session),
+  // articles: many(articles),
 }));
 
 export const accountRelations = relations(account, ({ one }) => ({
@@ -94,4 +114,15 @@ export const accountRelations = relations(account, ({ one }) => ({
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, { fields: [session.userId], references: [user.id] }),
+}));
+
+export const articleRelations = relations(article, ({ one }) => ({
+  publisher: one(publisher, {
+    fields: [article.publisherId],
+    references: [publisher.id],
+  }),
+}));
+
+export const publisherRelations = relations(publisher, ({ many }) => ({
+  article: many(article),
 }));

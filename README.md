@@ -16,13 +16,13 @@ A “newsletter inbox” that:
 - GET list of publishers
 - PATCH article (rename, archive/unarchive, read/unread)
 
-## DB Schema
+## DB Schema and Relations
 
 - Users ( cretaed by better-auth already )
 - Articles (
   -- id: uuid, primary_key,
-  -- user_id: uuid, foreign_key,
-  -- publisher: Publisher (or use publisher id as foreign key),
+  -- userId: uuid, foreign_key,
+  -- publisherId: uuid, foreign_key,
   -- title: string,
   -- snippet: string,
   -- content: string,
@@ -37,6 +37,10 @@ A “newsletter inbox” that:
   -- created_at: timestamp,
   -- updated_at: timestamp,
   )
+
+  one User -> many Articles
+  one Article -> one Publisher
+  one Publisher -> many Articles
 
 ## Sync Process
 
