@@ -135,86 +135,100 @@ export const articleRouter = createTRPCRouter({
     }
   }),
 
-  syncOneArticle: protectedProcedure.mutation(async ({ ctx }) => {
-    // const res = await ctx.gmailApiClient.users.messages.list({
-    //   userId: "me",
-    //   maxResults: 10,
-    // });
-    // console.log(res.data.messages);
+  syncOneArticle: protectedProcedure
+    .input(z.object({ index: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const res = await ctx.gmailApiClient.users.messages.list({
+        userId: "me",
+        maxResults: 200,
+      });
+      const messageIds: string[] = [];
+      res.data.messages?.forEach((m) => m.id && messageIds.push(m.id));
 
-    const fullMessage = await ctx.gmailApiClient.users.messages.get({
-      userId: "me",
-      id: "",
-      format: "full",
-    });
+      // select id to test based on input.index
+      const messageId: string = messageIds[input.index]!;
+      console.log("Message Id:", messageId);
 
-    if (fullMessage.data) {
-      if (!fullMessage.data.payload) {
-        throw new TRPCError({
-          code: "SERVICE_UNAVAILABLE",
-          message: "no payload from gmail response",
-        });
-      }
+      const fullMessage = await ctx.gmailApiClient.users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "full",
+      });
 
-      // Extract publisher id
-      let publisherEmail: string = "";
-      let publisherName: string = "";
-      if (fullMessage.data.payload.headers) {
-        const fromHeader = fullMessage.data.payload.headers.find(
-          (h) => h.name === "From",
-        );
-        const publisher = fromHeader?.value?.split(",")[0]?.split("<");
-        if (publisher) {
-          publisherName = publisher[0]?.trim() ?? "";
-          publisherEmail = publisher[1]?.split(">")[0]?.trim() ?? "";
+      if (fullMessage.data) {
+        if (!fullMessage.data.payload) {
+          throw new TRPCError({
+            code: "SERVICE_UNAVAILABLE",
+            message: "no payload from gmail response",
+          });
         }
-      }
 
-      let publisherId: string = "";
-      if (z.string().email().parse(publisherEmail)) {
-        const data = await ctx.db
-          .insert(publishers)
+        // Extract publisher id
+        let publisherEmail: string = "";
+        let publisherName: string = "";
+        if (fullMessage.data.payload.headers) {
+          const fromHeader = fullMessage.data.payload.headers.find(
+            (h) => h.name === "From",
+          );
+          const publisher = fromHeader?.value?.split(",")[0]?.split("<");
+          if (publisher) {
+            publisherName = publisher[0]?.trim() ?? "";
+            publisherEmail = publisher[1]?.split(">")[0]?.trim() ?? "";
+          }
+        }
+
+        let publisherId: string = "";
+        if (z.string().email().parse(publisherEmail)) {
+          const data = await ctx.db
+            .insert(publishers)
+            .values({
+              name: publisherName,
+              emailAddress: publisherEmail,
+            })
+            .onConflictDoUpdate({
+              target: publishers.emailAddress,
+              // "no-op" update, but forces RETURNING to work
+              set: {
+                emailAddress: publisherEmail,
+              },
+            })
+            .returning({ id: publishers.id });
+
+          publisherId = data.at(0)?.id ?? "";
+        }
+
+        // Extract title
+        let title: string = "";
+        if (fullMessage.data.payload.headers) {
+          const titleHeader = fullMessage.data.payload.headers.find(
+            (h) => h.name === "Subject",
+          );
+          title = titleHeader?.value ?? "";
+        }
+
+        const [insertedArticle] = await ctx.db
+          .insert(articles)
           .values({
-            name: publisherName,
-            emailAddress: publisherEmail,
+            content: getMessageContent(fullMessage.data.payload),
+            internalDate: fullMessage.data.internalDate ?? "",
+            snippet: fullMessage.data.snippet ?? "",
+            publisherId: publisherId,
+            title: title as string,
+            userId: ctx.session.user.id,
+            id: fullMessage.data.id!,
           })
           .onConflictDoUpdate({
-            target: publishers.emailAddress,
+            target: articles.id,
             // "no-op" update, but forces RETURNING to work
             set: {
-              emailAddress: publisherEmail,
+              id: fullMessage.data.id!,
             },
           })
-          .returning({ id: publishers.id });
+          .returning();
 
-        publisherId = data.at(0)?.id ?? "";
+        return insertedArticle;
+      } else {
+        return {};
       }
-
-      // Extract title
-      let title: string = "";
-      if (fullMessage.data.payload.headers) {
-        const titleHeader = fullMessage.data.payload.headers.find(
-          (h) => h.name === "Subject",
-        );
-        title = titleHeader?.value ?? "";
-      }
-
-      const [insertedArticle] = await ctx.db
-        .insert(articles)
-        .values({
-          content: getMessageContent(fullMessage.data.payload),
-          internalDate: fullMessage.data.internalDate ?? "",
-          snippet: fullMessage.data.snippet ?? "",
-          publisherId: publisherId,
-          title: title as string,
-          userId: ctx.session.user.id,
-          id: fullMessage.data.id!,
-        })
-        .returning();
-
-      return insertedArticle;
-    } else {
-      return {};
-    }
-  }),
+    }),
 });
