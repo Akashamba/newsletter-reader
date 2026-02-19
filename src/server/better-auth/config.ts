@@ -9,14 +9,22 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg", // or "pg" or "mysql"
   }),
-  emailAndPassword: {
-    enabled: true,
-  },
   plugins: [nextCookies()],
   socialProviders: {
     google: {
+      prompt: "select_account consent",
+      accessType: "offline",
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
+      scope: [
+        "https://mail.google.com/",
+        "https://www.googleapis.com/auth/gmail.labels",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.addons.current.message.action",
+        "https://www.googleapis.com/auth/gmail.addons.current.message.metadata",
+        "https://www.googleapis.com/auth/gmail.addons.current.message.readonly",
+      ],
     },
   },
 });
