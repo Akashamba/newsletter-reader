@@ -121,6 +121,7 @@ export const articleRouter = createTRPCRouter({
                 publisherId: "",
                 title: title as string,
                 userId: ctx.session.user.id,
+                id: fullMessage.data.id!,
               });
             }
           }
@@ -143,7 +144,7 @@ export const articleRouter = createTRPCRouter({
 
     const fullMessage = await ctx.gmailApiClient.users.messages.get({
       userId: "me",
-      id: "19c76b2d7dd12953",
+      id: "",
       format: "full",
     });
 
@@ -207,6 +208,7 @@ export const articleRouter = createTRPCRouter({
           publisherId: publisherId,
           title: title as string,
           userId: ctx.session.user.id,
+          id: fullMessage.data.id!,
         })
         .returning();
 
