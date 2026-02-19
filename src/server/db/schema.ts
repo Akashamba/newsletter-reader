@@ -17,7 +17,7 @@ export const articles = createTableWithPrefix(
     title: d.varchar({ length: 256 }).notNull(),
     snippet: d.varchar().notNull(),
     content: d.text().notNull(),
-
+    isRead: boolean().notNull().default(false),
     internalDate: d.text().notNull(), // int64 format
     createdAt: d
       .timestamp({ withTimezone: true })
