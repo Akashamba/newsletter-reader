@@ -64,9 +64,9 @@ A “newsletter inbox” that:
 # Tasks
 
 - [x] project and repo set up + auth + db + vercel deploy
-- [ ] finalize app features, api endpoints, db schema
-- [ ] set up gmail api (permissions and all: for now only inbox access)
+- [x] finalize app features, api endpoints, db schema
+- [x] set up gmail api (permissions and all: for now only inbox access)
+- [x] seed db
 - [ ] trpc router: refer to notes on sync process
-- [ ] seed db
 - [ ] Design UI
 - [ ] Make UI

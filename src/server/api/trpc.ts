@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 
 import { auth } from "~/server/better-auth";
 import { db } from "~/server/db";
+import { getGmailClient } from "../gmail-api";
 
 /**
  * 1. CONTEXT
@@ -30,9 +31,18 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   const session = await auth.api.getSession({
     headers: opts.headers,
   });
+
+  if (!session?.user) {
+    console.warn("No user found in session");
+  }
+
+  // get gmail api client
+  const gmailApiClient = await getGmailClient(opts.headers);
+
   return {
     db,
     session,
+    gmailApiClient,
     ...opts,
   };
 };

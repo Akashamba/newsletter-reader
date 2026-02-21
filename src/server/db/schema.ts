@@ -1,22 +1,24 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createTableWithPrefix } from "./create-table";
 
-export const article = createTableWithPrefix(
+export const articles = createTableWithPrefix(
   "articles",
   (d) => ({
-    id: d.uuid().primaryKey().defaultRandom(),
+    id: d.varchar({ length: 16 }).primaryKey().unique().notNull(),
+    uuid: uuid().unique().notNull().defaultRandom(),
     publisherId: d
       .uuid()
       .notNull()
-      .references(() => publisher.id, { onDelete: "cascade" }),
+      .references(() => publishers.id, { onDelete: "cascade" }),
     userId: d
       .varchar({ length: 255 })
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     title: d.varchar({ length: 256 }).notNull(),
     snippet: d.varchar().notNull(),
-    content: d.varchar().notNull(),
+    content: d.text().notNull(),
+    isRead: boolean().notNull().default(false),
     internalDate: d.text().notNull(), // int64 format
     createdAt: d
       .timestamp({ withTimezone: true })
@@ -24,15 +26,18 @@ export const article = createTableWithPrefix(
       .notNull(),
     updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
   }),
-  (t) => [index("title_idx").on(t.title), index("content_idx").on(t.content)],
+  (t) => [
+    index("title_idx").on(t.title),
+    // index("content_idx").on(t.content)
+  ],
 );
 
-export const publisher = createTableWithPrefix(
+export const publishers = createTableWithPrefix(
   "publisher",
   (d) => ({
     id: d.uuid().primaryKey().defaultRandom(),
     name: d.varchar({ length: 256 }),
-    emailAddress: d.varchar(),
+    emailAddress: d.varchar().unique().notNull(),
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => new Date())
@@ -116,13 +121,15 @@ export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, { fields: [session.userId], references: [user.id] }),
 }));
 
-export const articleRelations = relations(article, ({ one }) => ({
-  publisher: one(publisher, {
-    fields: [article.publisherId],
-    references: [publisher.id],
+export const articleRelations = relations(articles, ({ one }) => ({
+  publisher: one(publishers, {
+    fields: [articles.publisherId],
+    references: [publishers.id],
   }),
 }));
 
-export const publisherRelations = relations(publisher, ({ many }) => ({
-  article: many(article),
+export const publisherRelations = relations(publishers, ({ many }) => ({
+  article: many(articles),
 }));
+
+export type InsertArticle = typeof articles.$inferInsert;
