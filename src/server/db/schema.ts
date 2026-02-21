@@ -1,11 +1,12 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createTableWithPrefix } from "./create-table";
 
 export const articles = createTableWithPrefix(
   "articles",
   (d) => ({
     id: d.varchar({ length: 16 }).primaryKey().unique().notNull(),
+    uuid: uuid().unique().notNull().defaultRandom(),
     publisherId: d
       .uuid()
       .notNull()
@@ -131,5 +132,4 @@ export const publisherRelations = relations(publishers, ({ many }) => ({
   article: many(articles),
 }));
 
-export type Article = typeof articles.$inferSelect;
-export type Publisher = typeof publishers.$inferSelect;
+export type InsertArticle = typeof articles.$inferInsert;

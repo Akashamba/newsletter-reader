@@ -1,9 +1,16 @@
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { articles, publishers, type Publisher } from "~/server/db/schema";
+import { articles, publishers, type InsertArticle } from "~/server/db/schema";
+import {
+  getArticleByUuid,
+  getArticles,
+  getArticlesByPublisher,
+} from "../queries/articles";
+import type { gmail_v1 } from "googleapis";
+import { db } from "../../db";
 
 function base64UrlToUtf8(input: string) {
   const base64 = input
@@ -14,16 +21,16 @@ function base64UrlToUtf8(input: string) {
   return Buffer.from(base64, "base64").toString("utf8");
 }
 
-function getMessageContent(payload: any) {
+function getMessageContent(payload: gmail_v1.Schema$MessagePart) {
   let html = "";
   let plaintext = "";
 
   if (payload.parts) {
     // scan through all parts
-    payload.parts.forEach((p: any) => {
+    payload.parts.forEach((p: gmail_v1.Schema$MessagePart) => {
       // find and save the largest html part
       if (p.mimeType === "text/html") {
-        const newHtml = base64UrlToUtf8(p.body.data);
+        const newHtml = base64UrlToUtf8(p.body?.data ?? "");
         if (newHtml.length > html.length) {
           html = newHtml;
         }
@@ -31,7 +38,7 @@ function getMessageContent(payload: any) {
 
       // find and save the largest plaintext part
       if (p.mimeType === "text/plain") {
-        const newPlaintext = base64UrlToUtf8(p.body.data);
+        const newPlaintext = base64UrlToUtf8(p.body?.data ?? "");
         if (newPlaintext.length > plaintext.length) {
           plaintext = newPlaintext;
         }
@@ -45,7 +52,7 @@ function getMessageContent(payload: any) {
   } else if (plaintext.length > 0) {
     return plaintext;
   } else {
-    if (payload.body && payload.body.data) {
+    if (payload.body?.data) {
       return base64UrlToUtf8(payload.body.data);
     } else {
       return "";
@@ -53,182 +60,155 @@ function getMessageContent(payload: any) {
   }
 }
 
-export const articleRouter = createTRPCRouter({
-  getArticles: protectedProcedure.query(async ({ ctx }) => {
-    try {
-      const res = await ctx.db
-        .select()
-        .from(articles)
-        .where(eq(articles.userId, ctx.session.user.id));
-
-      return res;
-    } catch (error) {
-      throw new TRPCError({
-        message: "Error while getting articles",
-        code: "INTERNAL_SERVER_ERROR",
-      });
+async function parseFullMessage(
+  fullMessage: gmail_v1.Schema$Message,
+  userId: string,
+): Promise<InsertArticle> {
+  if (!fullMessage.payload) {
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "No message payload from Google",
+    });
+  }
+  // Extract publisher id
+  let publisherEmail = "";
+  let publisherName = "";
+  if (fullMessage.payload.headers) {
+    const fromHeader = fullMessage.payload.headers.find(
+      (h) => h.name?.toLowerCase() === "from",
+    );
+    if (!fromHeader?.value?.includes("<")) {
+      publisherName = fromHeader?.value ?? "";
+      publisherEmail = fromHeader?.value ?? "";
+    } else {
+      const publisher = fromHeader?.value?.split("<");
+      if (publisher) {
+        publisherName = publisher[0]?.trim() ?? "";
+        publisherEmail = publisher[1]?.split(">")[0]?.trim() ?? "";
+      }
     }
-  }),
+  }
 
-  syncWitihGmail: protectedProcedure.mutation(async ({ ctx }) => {
-    try {
-      // Get last 200 messages
-      const res = await ctx.gmailApiClient.users.messages.list({
-        userId: "me",
-        maxResults: 200,
-      });
+  let publisherId = "";
+  if (z.string().email().parse(publisherEmail)) {
+    const data = await db
+      .insert(publishers)
+      .values({
+        name: publisherName,
+        emailAddress: publisherEmail,
+      })
+      .onConflictDoUpdate({
+        target: publishers.emailAddress,
+        // "no-op" update, but forces RETURNING to work
+        set: {
+          emailAddress: publisherEmail,
+        },
+      })
+      .returning({ id: publishers.id });
 
-      if (res.data.messages && res.data.messages.length > 0) {
-        // Go through all 200 messages
-        res.data.messages.forEach(async (m) => {
-          const match = ctx.db
-            .selectDistinct()
-            .from(articles)
-            .where(eq(articles.id, m.id!));
+    publisherId = data.at(0)?.id ?? "";
+  }
 
-          // For all messages not in db, fetch full message
-          if (!match) {
-            const fullMessage = await ctx.gmailApiClient.users.messages.get({
-              userId: "me",
-              id: m.id!,
-              format: "full",
-            });
+  // Extract title
+  let title = "";
+  if (fullMessage.payload.headers) {
+    const titleHeader = fullMessage.payload.headers.find(
+      (h) => h.name?.toLowerCase() === "subject",
+    );
+    title = titleHeader?.value ?? "";
+  }
 
-            if (fullMessage.data) {
-              if (!fullMessage.data.payload) {
-                throw new TRPCError({
-                  code: "SERVICE_UNAVAILABLE",
-                  message: "no payload from gmail response",
-                });
-              }
+  return {
+    content: getMessageContent(fullMessage.payload),
+    internalDate: fullMessage.internalDate ?? "",
+    snippet: fullMessage.snippet ?? "",
+    publisherId: publisherId,
+    title: title,
+    userId: userId,
+    id: fullMessage.id!,
+  };
+}
 
-              let title;
-
-              if (fullMessage.data.payload.headers) {
-                title = fullMessage.data.payload.headers.find((h) => {
-                  if (h.name === "Subject") {
-                    return (h.value as string) || "";
-                  }
-                });
-              } else {
-                title = "";
-              }
-
-              ctx.db.insert(articles).values({
-                content: getMessageContent(fullMessage.data.payload),
-                internalDate: fullMessage.data.internalDate ?? "",
-                snippet: fullMessage.data.snippet ?? "",
-                publisherId: "",
-                title: title as string,
-                userId: ctx.session.user.id,
-                id: fullMessage.data.id!,
-              });
-            }
-          }
+export const articleRouter = createTRPCRouter({
+  getArticles: protectedProcedure
+    .input(z.object({ publisherId: z.string().uuid().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        if (input?.publisherId) {
+          return await getArticlesByPublisher(
+            ctx.session.user.id,
+            input.publisherId,
+          );
+        }
+        return await getArticles(ctx.session.user.id, {
+          isUnread: true,
+          limit: 10,
+        });
+      } catch {
+        throw new TRPCError({
+          message: "Error while getting articles",
+          code: "INTERNAL_SERVER_ERROR",
         });
       }
-    } catch (error) {
-      throw new TRPCError({
-        code: "SERVICE_UNAVAILABLE",
-        message: "Error fetching emails from Gmail API",
-      });
-    }
-  }),
+    }),
 
-  syncOneArticle: protectedProcedure
-    .input(z.object({ index: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const res = await ctx.gmailApiClient.users.messages.list({
+  getFullArticle: protectedProcedure
+    .input(z.object({ uuid: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const [article] = await getArticleByUuid(ctx.session.user.id, input.uuid);
+      if (!article) {
+        throw new TRPCError({
+          message: "No articles found for the given uuid",
+          code: "NOT_FOUND",
+        });
+      }
+      return article;
+    }),
+
+  syncWithGmail: protectedProcedure.mutation(async ({ ctx }) => {
+    // sync
+    // - get the 200 newest messages
+    const res = await ctx.gmailApiClient.users.messages.list({
+      userId: "me",
+      maxResults: 200,
+    });
+
+    // Extract Ids from last 200 messages
+    const messageIds: string[] = [];
+    res.data.messages?.forEach((m) => {
+      if (m.id) {
+        messageIds.push(m.id);
+      }
+    });
+
+    // Identify which message ids are not already in the db
+    const rows = await ctx.db
+      .select({ id: articles.id })
+      .from(articles)
+      .where(inArray(articles.id, messageIds));
+    const existingIds = new Set(rows.map((r) => r.id));
+    const nonExistingIds: string[] = [];
+    messageIds.forEach((id) => {
+      if (!existingIds.has(id)) {
+        nonExistingIds.push(id);
+      }
+    });
+
+    // - for each messageid not in the db already,
+    // - - fetch full message
+    // - - parse
+    // - - push into db
+    const newMessages: InsertArticle[] = [];
+    const promises = nonExistingIds.map(async (id) => {
+      const m = await ctx.gmailApiClient.users.messages.get({
         userId: "me",
-        maxResults: 200,
-      });
-      const messageIds: string[] = [];
-      res.data.messages?.forEach((m) => m.id && messageIds.push(m.id));
-
-      // select id to test based on input.index
-      const messageId: string = messageIds[input.index]!;
-      console.log("Message Id:", messageId);
-
-      const fullMessage = await ctx.gmailApiClient.users.messages.get({
-        userId: "me",
-        id: messageId,
+        id: id,
         format: "full",
       });
 
-      if (fullMessage.data) {
-        if (!fullMessage.data.payload) {
-          throw new TRPCError({
-            code: "SERVICE_UNAVAILABLE",
-            message: "no payload from gmail response",
-          });
-        }
-
-        // Extract publisher id
-        let publisherEmail: string = "";
-        let publisherName: string = "";
-        if (fullMessage.data.payload.headers) {
-          const fromHeader = fullMessage.data.payload.headers.find(
-            (h) => h.name === "From",
-          );
-          const publisher = fromHeader?.value?.split(",")[0]?.split("<");
-          if (publisher) {
-            publisherName = publisher[0]?.trim() ?? "";
-            publisherEmail = publisher[1]?.split(">")[0]?.trim() ?? "";
-          }
-        }
-
-        let publisherId: string = "";
-        if (z.string().email().parse(publisherEmail)) {
-          const data = await ctx.db
-            .insert(publishers)
-            .values({
-              name: publisherName,
-              emailAddress: publisherEmail,
-            })
-            .onConflictDoUpdate({
-              target: publishers.emailAddress,
-              // "no-op" update, but forces RETURNING to work
-              set: {
-                emailAddress: publisherEmail,
-              },
-            })
-            .returning({ id: publishers.id });
-
-          publisherId = data.at(0)?.id ?? "";
-        }
-
-        // Extract title
-        let title: string = "";
-        if (fullMessage.data.payload.headers) {
-          const titleHeader = fullMessage.data.payload.headers.find(
-            (h) => h.name === "Subject",
-          );
-          title = titleHeader?.value ?? "";
-        }
-
-        const [insertedArticle] = await ctx.db
-          .insert(articles)
-          .values({
-            content: getMessageContent(fullMessage.data.payload),
-            internalDate: fullMessage.data.internalDate ?? "",
-            snippet: fullMessage.data.snippet ?? "",
-            publisherId: publisherId,
-            title: title as string,
-            userId: ctx.session.user.id,
-            id: fullMessage.data.id!,
-          })
-          .onConflictDoUpdate({
-            target: articles.id,
-            // "no-op" update, but forces RETURNING to work
-            set: {
-              id: fullMessage.data.id!,
-            },
-          })
-          .returning();
-
-        return insertedArticle;
-      } else {
-        return {};
-      }
-    }),
+      newMessages.push(await parseFullMessage(m.data, ctx.session.user.id));
+    });
+    await Promise.all(promises);
+    await ctx.db.insert(articles).values(newMessages);
+  }),
 });
