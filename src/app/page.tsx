@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import SyncButton from "./_components/SyncButton";
 import type Article from "~/types/articles";
+import SignedOutPage from "./_components/SignedOutPage";
 
 export default async function Home() {
   const session = await getSession();
@@ -68,15 +69,5 @@ export default async function Home() {
     );
   }
 
-  return (
-    <div>
-      <div> Sign in below </div>
-      <button
-        className="cursor-pointer items-center justify-center gap-3 rounded-2xl bg-white px-3 py-1 text-base font-semibold text-[#111]"
-        onClick={handleSignIn}
-      >
-        Sign In
-      </button>
-    </div>
-  );
+  return <SignedOutPage />;
 }
