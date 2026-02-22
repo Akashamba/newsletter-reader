@@ -60,8 +60,8 @@ const FeedPost = ({ article }: { article: Article }) => {
   );
 };
 
-export function formatFeedDate(isoString: string): string {
-  const date = new Date(Number(isoString));
+export function formatFeedDate(int64UnixDate: number): string {
+  const date = new Date(int64UnixDate);
   const now = new Date();
 
   const diffMs = now.getTime() - date.getTime();

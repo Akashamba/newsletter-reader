@@ -3,6 +3,7 @@ export default interface Publisher {
   name: string | null;
   emailAddress: string;
   defaultIconColor: string;
+  createdByUserId: string;
   createdAt?: Date;
   updatedAt?: Date | null;
 }
