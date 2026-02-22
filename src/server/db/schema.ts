@@ -38,6 +38,7 @@ export const publishers = createTableWithPrefix(
     id: d.uuid().primaryKey().defaultRandom(),
     name: d.varchar({ length: 256 }),
     emailAddress: d.varchar().unique().notNull(),
+    defaultIconColor: d.varchar({ length: 7 }).notNull(),
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => new Date())
