@@ -2,7 +2,6 @@ import { getSession } from "~/server/better-auth/server";
 import { api, HydrateClient } from "~/trpc/server";
 import Feed from "./_components/Feed";
 import { auth } from "~/server/better-auth";
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import SyncButton from "./_components/SyncButton";
 import type Article from "~/types/articles";
@@ -10,22 +9,6 @@ import SignedOutPage from "./_components/SignedOutPage";
 
 export default async function Home() {
   const session = await getSession();
-
-  const handleSignIn = async () => {
-    "use server";
-    const res = await auth.api.signInSocial({
-      body: {
-        provider: "google",
-        callbackURL: "/",
-      },
-    });
-
-    if (!res.url) {
-      throw new Error("No URL returned from signInSocial");
-    }
-
-    redirect(res.url);
-  };
 
   const handleSignOut = async () => {
     "use server";
