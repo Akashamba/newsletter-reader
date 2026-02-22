@@ -1,25 +1,25 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createTableWithPrefix } from "./create-table";
 
 export const articles = createTableWithPrefix(
   "articles",
   (d) => ({
     id: d.varchar({ length: 16 }).primaryKey().unique().notNull(),
-    uuid: uuid().unique().notNull().defaultRandom(),
+    uuid: d.uuid().unique().notNull().defaultRandom(),
     publisherId: d
       .uuid()
       .notNull()
       .references(() => publishers.id, { onDelete: "cascade" }),
     userId: d
-      .varchar({ length: 255 })
+      .text()
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     title: d.varchar({ length: 256 }).notNull(),
     snippet: d.varchar().notNull(),
     content: d.text().notNull(),
-    isRead: boolean().notNull().default(false),
-    internalDate: d.text().notNull(), // int64 format
+    isRead: d.boolean().notNull().default(false),
+    internalDate: d.bigint({ mode: "number" }).notNull(), // int64 format
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => new Date())
@@ -38,6 +38,10 @@ export const publishers = createTableWithPrefix(
     id: d.uuid().primaryKey().defaultRandom(),
     name: d.varchar({ length: 256 }),
     emailAddress: d.varchar().unique().notNull(),
+    createdByUserId: d
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     defaultIconColor: d.varchar({ length: 7 }).notNull(),
     createdAt: d
       .timestamp({ withTimezone: true })
