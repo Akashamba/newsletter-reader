@@ -8,7 +8,7 @@ export default interface Article {
   title: string;
   snippet: string;
   isRead?: boolean;
-  internalDate: string;
+  internalDate: number;
   publisher?: Publisher;
   content?: string;
   createdAt?: Date;
