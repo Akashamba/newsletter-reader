@@ -20,9 +20,8 @@ export async function getArticles(
     with: {
       publisher: {
         columns: {
-          name: true,
-          emailAddress: true,
-          id: true,
+          createdAt: false,
+          updatedAt: false,
         },
       },
     },

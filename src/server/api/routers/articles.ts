@@ -90,12 +90,23 @@ async function parseFullMessage(
   }
 
   let publisherId = "";
+  const colors = [
+    "#FDE68A",
+    "#FED7AA",
+    "#BAE6FD",
+    "#A7F3D0",
+    "#E9D5FF",
+    "#FBCFE8",
+    "#D1FAE5",
+    "#E0F2FE",
+  ];
   if (z.string().email().parse(publisherEmail)) {
     const data = await db
       .insert(publishers)
       .values({
         name: publisherName,
         emailAddress: publisherEmail,
+        defaultIconColor: colors[Math.floor(Math.random() * 10) % 8]!,
       })
       .onConflictDoUpdate({
         target: publishers.emailAddress,

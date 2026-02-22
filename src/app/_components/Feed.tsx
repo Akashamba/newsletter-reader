@@ -26,7 +26,9 @@ const FeedPost = ({ article }: { article: Article }) => {
             {formatFeedDate(article.internalDate)}
           </div>
         </div>
-        <div className="mt-1 line-clamp-2 text-gray-400">{article.snippet}</div>
+        <div className="mt-1 line-clamp-2 font-normal text-gray-400">
+          {article.snippet}
+        </div>
       </Link>
       {/* publisher info */}
       {article.publisher && (
@@ -35,11 +37,21 @@ const FeedPost = ({ article }: { article: Article }) => {
             href={`/publisher/${article.publisher.id}`}
             className="content group cursor-pointer pt-4 transition"
           >
-            <div className="text-sm font-medium text-white group-hover:underline">
-              {article.publisher?.name}
-            </div>
-            <div className="text-xs font-normal text-gray-400 group-hover:underline">
-              {article.publisher?.emailAddress}
+            <div className="flex items-center gap-2">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-xl"
+                style={{ backgroundColor: article.publisher.defaultIconColor }}
+              >
+                {article.publisher.name?.charAt(0)}
+              </div>
+              <div>
+                <div className="text-sm font-medium text-white group-hover:underline">
+                  {article.publisher?.name}
+                </div>
+                <div className="text-xs font-normal text-gray-400 group-hover:underline">
+                  {article.publisher?.emailAddress}
+                </div>
+              </div>
             </div>
           </Link>
         </div>
