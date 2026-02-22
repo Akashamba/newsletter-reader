@@ -107,6 +107,7 @@ async function parseFullMessage(
         name: publisherName,
         emailAddress: publisherEmail,
         defaultIconColor: colors[Math.floor(Math.random() * 10) % 8]!,
+        createdByUserId: userId,
       })
       .onConflictDoUpdate({
         target: publishers.emailAddress,
@@ -126,12 +127,13 @@ async function parseFullMessage(
     const titleHeader = fullMessage.payload.headers.find(
       (h) => h.name?.toLowerCase() === "subject",
     );
-    title = titleHeader?.value ?? "";
+    title =
+      titleHeader?.value ?? `Email from ${publisherName} <${publisherEmail}>`;
   }
 
   return {
     content: getMessageContent(fullMessage.payload),
-    internalDate: fullMessage.internalDate ?? "",
+    internalDate: Number(fullMessage.internalDate),
     snippet: fullMessage.snippet ?? "",
     publisherId: publisherId,
     title: title,
